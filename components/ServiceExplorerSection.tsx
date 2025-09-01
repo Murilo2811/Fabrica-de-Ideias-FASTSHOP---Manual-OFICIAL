@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, forwardRef, useEffect } from 'react';
 import type { Service, ServiceStatus } from '../types';
 import Section from './Section';
@@ -8,6 +9,7 @@ import { clusterData } from '../data/clusterData';
 import { useServices } from '../contexts/ServicesContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import Pagination from './Pagination';
+import { criteriaData } from '../data/criteriaData';
 
 
 interface ServiceExplorerSectionProps {}
@@ -41,26 +43,38 @@ const statusColorMap: Record<ServiceStatus, string> = {
 };
 const statusOptions: ServiceStatus[] = ['avaliação', 'aprovada', 'cancelada', 'finalizada'];
 
-const ServiceCard: React.FC<{ service: Service; onDelete: (id: number) => Promise<void>; onEdit: (service: Service) => void }> = ({ service, onDelete, onEdit }) => {
+const ServiceCard: React.FC<{
+  service: Service;
+  onDelete: (id: number) => Promise<void>;
+  onEdit: (service: Service) => void;
+  onView: (service: Service) => void;
+}> = ({ service, onDelete, onEdit, onView }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDelete = async () => {
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if(window.confirm(`Tem certeza que deseja excluir a ideia "${service.service}"? Esta ação não pode ser desfeita.`)){
       setIsDeleting(true);
       try {
         await onDelete(service.id);
-        // On success, component will unmount, so no need to reset state.
       } catch (error) {
-        // The error is handled by the context notification system. We just need to reset our loading state.
         setIsDeleting(false);
       }
     }
-  }
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit(service);
+  };
 
   return (
-    <div className={`bg-gray-50 p-4 rounded-lg shadow-md flex flex-col justify-between relative transform hover:-translate-y-1 transition-transform duration-200 ${isDeleting ? 'opacity-50' : ''}`}>
+    <div
+      onClick={() => onView(service)}
+      className={`bg-gray-50 p-4 rounded-lg shadow-md flex flex-col justify-between relative transform hover:-translate-y-1 transition-transform duration-200 cursor-pointer ${isDeleting ? 'opacity-50' : ''}`}
+    >
       <div className="absolute top-2 right-2 flex gap-1">
-        <button onClick={() => onEdit(service)} disabled={isDeleting} className="p-1 rounded-full text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition-colors disabled:opacity-50" title="Editar Ideia">
+        <button onClick={handleEdit} disabled={isDeleting} className="p-1 rounded-full text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition-colors disabled:opacity-50" title="Editar Ideia">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>
         </button>
         <button onClick={handleDelete} disabled={isDeleting} className="p-1 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 transition-colors disabled:opacity-50" title="Excluir Ideia">
@@ -233,6 +247,54 @@ const EditServiceModal: React.FC<{
   );
 };
 
+const ViewDetailsModal: React.FC<{ service: Service; isOpen: boolean; onClose: () => void; }> = ({ service, isOpen, onClose }) => {
+    if (!isOpen) return null;
+
+    const totalScore = service.scores.reduce((acc, score) => acc + (score || 0), 0);
+    const revenueFormatted = (service.revenueEstimate || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={service.service}>
+            <div className="space-y-5">
+                <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Benefício Principal</h4>
+                    <p className="text-gray-800 mt-1">{service.need}</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-4 border-t">
+                    <div><strong className="text-gray-600 block text-sm">Público-Alvo:</strong> {service.targetAudience}</div>
+                    <div><strong className="text-gray-600 block text-sm">Modelo de Negócio:</strong> {mapBusinessModel(service.businessModel)}</div>
+                    <div>
+                        <strong className="text-gray-600 block text-sm">Status:</strong>
+                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusColorMap[service.status || 'avaliação']}`}>
+                            {statusDisplayMap[service.status || 'avaliação']}
+                        </span>
+                    </div>
+                    <div><strong className="text-gray-600 block text-sm">Criador:</strong> {service.creatorName || 'N/A'}</div>
+                </div>
+                 <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ranking de Priorização</h4>
+                    <div className="space-y-2 p-4 bg-gray-50 rounded-lg border">
+                        {criteriaData.map((criterion, index) => (
+                        <div key={criterion.id} className="flex justify-between items-center text-sm">
+                            <span className="text-gray-700">{criterion.shortTitle}</span>
+                            <span className="font-bold text-lg text-brand-mid">{service.scores[index] || 0}</span>
+                        </div>
+                        ))}
+                        <div className="flex justify-between items-center border-t pt-2 mt-2">
+                        <span className="font-bold text-gray-800">Total</span>
+                        <span className="font-bold text-xl text-brand-dark">{totalScore}</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Estimativa Faturamento</h4>
+                    <p className="text-gray-800 text-2xl font-bold mt-1">{revenueFormatted}</p>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionProps>((props, ref) => {
   const { services, deleteService, updateService, downloadCSV } = useServices();
@@ -244,6 +306,7 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
     searchText: '',
   });
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [viewingService, setViewingService] = useState<Service | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
@@ -313,8 +376,13 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
     setEditingService(service);
   };
 
+  const handleViewClick = (service: Service) => {
+    setViewingService(service);
+  };
+
   const handleCloseModal = () => {
     setEditingService(null);
+    setViewingService(null);
   };
 
   return (
@@ -381,7 +449,7 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {paginatedServices.length > 0 ? (
-            paginatedServices.map(service => <ServiceCard key={service.id} service={service} onDelete={deleteService} onEdit={handleEditClick} />)
+            paginatedServices.map(service => <ServiceCard key={service.id} service={service} onDelete={deleteService} onEdit={handleEditClick} onView={handleViewClick} />)
           ) : (
             <p className="text-center text-gray-500 col-span-full py-8">Nenhum serviço encontrado para os filtros selecionados.</p>
           )}
@@ -398,6 +466,13 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
           onClose={handleCloseModal}
           onSave={updateService}
           service={editingService}
+        />
+      )}
+      {viewingService && (
+        <ViewDetailsModal 
+          isOpen={!!viewingService}
+          onClose={() => setViewingService(null)}
+          service={viewingService}
         />
       )}
     </Section>
