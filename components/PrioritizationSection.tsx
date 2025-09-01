@@ -1,5 +1,9 @@
 
 import React, { useState, forwardRef, useMemo, useEffect } from 'react';
+import {
+  ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis,
+  CartesianGrid, Tooltip, ReferenceLine, Label
+} from 'recharts';
 import type { Service, ServiceStatus } from '../types';
 import Section from './Section';
 import Loader from './Loader';
@@ -19,6 +23,83 @@ type SavingState = {
   [serviceId: number]: {
     [field: string]: boolean;
   };
+};
+
+// Custom Tooltip for the chart
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white p-3 border rounded-lg shadow-lg max-w-xs animate-fade-in">
+        <p className="font-bold text-brand-dark truncate">{data.service}</p>
+        <p className="text-sm text-gray-600 mt-1">
+          <strong>{criteriaData[1].shortTitle}:</strong> {data.valorCliente}
+        </p>
+        <p className="text-sm text-gray-600">
+          <strong>{criteriaData[3].shortTitle}:</strong> {data.viabilidade}
+        </p>
+        <p className="text-sm text-gray-600">
+          <strong>Pontuação Total:</strong> {data.total}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// Prioritization Matrix component (Scatter Plot)
+const PrioritizationMatrix: React.FC<{ data: (Service & { total: number })[] }> = ({ data }) => {
+  const chartData = useMemo(() => data.map(service => ({
+    ...service,
+    viabilidade: service.scores[3] || 0, // Index 3 is Viability
+    valorCliente: service.scores[1] || 0, // Index 1 is Customer Value
+  })), [data]);
+
+  return (
+    <div className="w-full h-[500px] bg-gray-50/50 p-4 rounded-lg border my-6 relative">
+       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-80px)] h-[calc(100%-80px)] grid grid-cols-2 grid-rows-2 gap-0 pointer-events-none z-0">
+        <div className="flex items-end justify-start p-2"><span className="text-xs font-semibold text-gray-400 bg-white/70 px-2 py-1 rounded">A Questionar</span></div>
+        <div className="flex items-end justify-end p-2 text-right"><span className="text-xs font-semibold text-gray-400 bg-white/70 px-2 py-1 rounded">Apostar</span></div>
+        <div className="flex items-start justify-start p-2"><span className="text-xs font-semibold text-gray-400 bg-white/70 px-2 py-1 rounded">Possível</span></div>
+        <div className="flex items-start justify-end p-2 text-right"><span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">Executar</span></div>
+      </div>
+       <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart
+          margin={{
+            top: 20, right: 20, bottom: 20, left: 20,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis 
+            type="number" 
+            dataKey="viabilidade" 
+            name={criteriaData[3].shortTitle} 
+            domain={[0, 5.2]} 
+            ticks={[0, 1, 2, 3, 4, 5]}
+          >
+             <Label value="Viabilidade" offset={-15} position="insideBottom" />
+          </XAxis>
+          <YAxis 
+            type="number" 
+            dataKey="valorCliente" 
+            name={criteriaData[1].shortTitle} 
+            domain={[0, 5.2]} 
+            ticks={[0, 1, 2, 3, 4, 5]}
+          >
+            <Label value="Valor para o Cliente" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} offset={-5} />
+          </YAxis>
+          <ZAxis type="number" dataKey="total" range={[40, 300]} name="Pontuação Total" />
+          
+          <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+          
+          <ReferenceLine y={2.5} stroke="#A0AEC0" strokeDasharray="4 4" />
+          <ReferenceLine x={2.5} stroke="#A0AEC0" strokeDasharray="4 4" />
+          
+           <Scatter data={chartData} fill="#2D3748" className="transition-opacity hover:opacity-100 opacity-70" shape="circle" />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  );
 };
 
 const getClassification = (score: number) => {
@@ -210,6 +291,7 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
   const [filters, setFilters] = useState({ cluster: 'all', classification: 'all', status: 'all' });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [showChart, setShowChart] = useState(false);
   
   const uniqueClusters = useMemo(() => [...new Set(services.map(s => s.cluster).filter(Boolean))].sort(), [services]);
   const classificationOptions = ['Altíssima', 'Alta', 'Média', 'Baixa'];
@@ -296,12 +378,22 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
       ref={ref}
       id="prioritization"
       title="Priorização de Ideias"
-      subtitle="Atribua notas para cada ideia com base nos critérios estratégicos. Clique nos cabeçalhos da tabela para ordenar os resultados."
+      subtitle="Atribua notas para cada ideia com base nos critérios estratégicos. Use os filtros e a visualização gráfica para análise."
     >
       <div className="bg-white p-6 rounded-xl shadow-lg">
         <div className="flex flex-wrap justify-center items-center gap-4 mb-6">
           <button onClick={refreshData} disabled={isLoading} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50">
             Sincronizar Dados
+          </button>
+           <button 
+            onClick={() => setShowChart(!showChart)} 
+            className="bg-brand-mid text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-all flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+            </svg>
+            {showChart ? 'Ocultar Gráfico' : 'Visualizar Gráfico'}
           </button>
           <button onClick={downloadCSV} disabled={services.length === 0} className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -335,6 +427,10 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
 
         {isRefreshing && <Loader text="Sincronizando com a base de dados..." />}
         
+        {showChart && !isLoading && processedData.length > 0 && (
+          <PrioritizationMatrix data={processedData} />
+        )}
+
         {!isLoading && processedData.length > 0 && (
           <>
             <RankingTable 

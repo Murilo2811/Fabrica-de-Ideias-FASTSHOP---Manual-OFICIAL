@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, forwardRef } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import type { Service } from '../types';
@@ -68,6 +69,13 @@ const OverviewSection = forwardRef<HTMLElement, OverviewSectionProps>(({ onClust
     };
   }, [services]);
 
+  const handlePieClick = (data: any, index: number, event: React.MouseEvent) => {
+    const clusterInfo = clusterData.find(c => c.shortTitle === data.name);
+    if (clusterInfo) {
+      onClusterClick(clusterInfo.id, event);
+    }
+  };
+
   return (
     <Section ref={ref} id="overview" title="Visão Geral do Portfólio">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
@@ -91,6 +99,8 @@ const OverviewSection = forwardRef<HTMLElement, OverviewSectionProps>(({ onClust
                 fill="#8884d8"
                 dataKey="value"
                 nameKey="name"
+                onClick={handlePieClick}
+                className="cursor-pointer"
                 label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
                   if (percent < 0.05) return '';
                   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
