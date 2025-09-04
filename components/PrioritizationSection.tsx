@@ -19,12 +19,6 @@ interface SortConfig {
   direction: SortDirection;
 }
 
-type SavingState = {
-  [serviceId: number]: {
-    [field: string]: boolean;
-  };
-};
-
 // Custom Tooltip for the chart
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -143,63 +137,51 @@ const SortableHeader: React.FC<{
     );
 };
 
-
-const RankingTable: React.FC<{
+interface RankingTableProps {
   data: (Service & { total: number })[];
-  onUpdateService: (service: Service) => Promise<void>;
+  onServiceChange: (service: Service) => void;
   sortConfig: SortConfig | null;
   onSort: (key: string) => void;
   pageStartIndex: number;
-}> = ({ data, onUpdateService, sortConfig, onSort, pageStartIndex }) => {
-  
+  modifiedServiceIds: number[];
+}
+
+const RankingTable: React.FC<RankingTableProps> = ({ data, onServiceChange, sortConfig, onSort, pageStartIndex, modifiedServiceIds }) => {
   const [localServices, setLocalServices] = useState(data);
-  const [savingState, setSavingState] = useState<SavingState>({});
 
   React.useEffect(() => {
     setLocalServices(data);
   }, [data]);
 
-  const handleFieldChange = (id: number, field: string, value: number) => {
-    setLocalServices(prev =>
-      prev.map(item => {
-        if (item.id === id) {
-          if (field.startsWith('score_')) {
-            const index = parseInt(field.split('_')[1], 10);
-            const newScores = [...item.scores];
-            newScores[index] = value;
-            return { ...item, scores: newScores };
-          }
-          if (field === 'revenue') {
-            return { ...item, revenueEstimate: value };
-          }
+  const handleLocalChange = (id: number, field: keyof Service | `score_${number}`, value: any) => {
+    let changedService: Service | undefined;
+    
+    const newLocalServices = localServices.map(s => {
+      if (s.id === id) {
+        const updatedService = { ...s };
+        if (typeof field === 'string' && field.startsWith('score_')) {
+          const index = parseInt(field.split('_')[1], 10);
+          const newScores = [...updatedService.scores];
+          newScores[index] = Math.max(0, Math.min(5, Number(value)));
+          updatedService.scores = newScores;
+        } else if (field === 'revenueEstimate') {
+            updatedService.revenueEstimate = Number(value) >= 0 ? Number(value) : 0;
         }
-        return item;
-      })
-    );
-  };
-  
-  const handleUpdate = async (id: number, field: string) => {
-    const serviceToUpdate = localServices.find(s => s.id === id);
-    if (serviceToUpdate) {
-        setSavingState(prev => ({...prev, [id]: {...prev[id], [field]: true}}));
-        try {
-            await onUpdateService(serviceToUpdate);
-        } catch (error) {
-            // Error is handled by context notification, just need to reset saving state
-        } finally {
-            setSavingState(prev => ({...prev, [id]: {...prev[id], [field]: false}}));
+        else {
+          (updatedService as any)[field] = value;
         }
-    }
-  };
+        changedService = updatedService;
+        return updatedService;
+      }
+      return s;
+    });
 
-  const handleStatusChange = async (id: number, status: ServiceStatus) => {
-    const serviceToUpdate = localServices.find(s => s.id === id);
-    if(serviceToUpdate) {
-        const updatedService = { ...serviceToUpdate, status };
-        setLocalServices(prev => prev.map(s => s.id === id ? updatedService : s));
-        await onUpdateService(updatedService);
+    setLocalServices(newLocalServices);
+    
+    if (changedService) {
+      onServiceChange(changedService);
     }
-  }
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -221,45 +203,33 @@ const RankingTable: React.FC<{
           {localServices.map((item, index) => {
             const total = item.scores.reduce((acc, val) => acc + (val || 0), 0);
             const classification = getClassification(total);
+            const isModified = modifiedServiceIds.includes(item.id);
+
             return (
-              <tr key={item.id}>
+              <tr key={item.id} className={`${isModified ? 'bg-yellow-50' : ''} transition-colors`}>
                 <td className="px-4 py-3 whitespace-nowrap text-center font-bold text-lg text-gray-700">{pageStartIndex + index + 1}</td>
                 <td className="px-4 py-3 whitespace-nowrap"><div className="font-semibold text-gray-900">{item.service}</div><div className="text-xs text-gray-500">ID: {item.id}</div></td>
-                {item.scores.map((score, i) => {
-                    const fieldName = `score_${i}`;
-                    const isSaving = savingState[item.id]?.[fieldName];
-                    return (
-                      <td key={i} className="px-2 py-3 whitespace-nowrap text-center">
+                {item.scores.map((score, i) => (
+                    <td key={i} className="px-2 py-3 whitespace-nowrap text-center">
                         <input
-                          type="number"
-                          min="0"
-                          max="5"
-                          value={score}
-                          onChange={(e) => handleFieldChange(item.id, fieldName, Math.max(0, Math.min(5, Number(e.target.value))))}
-                          onBlur={() => handleUpdate(item.id, fieldName)}
-                          disabled={isSaving}
-                          className={`w-14 text-center rounded-md border-gray-300 p-1 focus:border-brand-mid focus:ring-brand-mid ${isSaving ? 'bg-gray-200 animate-pulse' : ''}`}
+                            type="number"
+                            min="0"
+                            max="5"
+                            value={score}
+                            onChange={(e) => handleLocalChange(item.id, `score_${i}`, e.target.value)}
+                            className="w-14 text-center rounded-md border-gray-300 p-1 focus:border-brand-mid focus:ring-brand-mid"
                         />
-                      </td>
-                    )
-                })}
+                    </td>
+                ))}
                 <td className="px-2 py-3 whitespace-nowrap text-center">
-                    {(() => {
-                        const fieldName = 'revenue';
-                        const isSaving = savingState[item.id]?.[fieldName];
-                        return (
-                            <input
-                                type="number"
-                                min="0"
-                                value={item.revenueEstimate || ''}
-                                onChange={(e) => handleFieldChange(item.id, fieldName, Number(e.target.value))}
-                                onBlur={() => handleUpdate(item.id, fieldName)}
-                                disabled={isSaving}
-                                className={`w-28 text-center rounded-md border-gray-300 p-1 focus:border-brand-mid focus:ring-brand-mid ${isSaving ? 'bg-gray-200 animate-pulse' : ''}`}
-                                placeholder="R$"
-                            />
-                        )
-                    })()}
+                    <input
+                        type="number"
+                        min="0"
+                        value={item.revenueEstimate || ''}
+                        onChange={(e) => handleLocalChange(item.id, 'revenueEstimate', e.target.value)}
+                        className="w-28 text-center rounded-md border-gray-300 p-1 focus:border-brand-mid focus:ring-brand-mid"
+                        placeholder="R$"
+                    />
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-center font-bold text-lg text-gray-800">{total}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-center">
@@ -268,7 +238,7 @@ const RankingTable: React.FC<{
                 <td className="px-2 py-3 whitespace-nowrap">
                   <select
                     value={item.status || 'avaliação'}
-                    onChange={(e) => handleStatusChange(item.id, e.target.value as ServiceStatus)}
+                    onChange={(e) => handleLocalChange(item.id, 'status', e.target.value as ServiceStatus)}
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white p-1"
                     style={{ minWidth: '120px' }}
                   >
@@ -292,11 +262,19 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [showChart, setShowChart] = useState(false);
-  
+  const [modifiedServices, setModifiedServices] = useState<{ [id: number]: Service }>({});
+  const [isSaving, setIsSaving] = useState(false);
+
   const uniqueClusters = useMemo(() => [...new Set(services.map(s => s.cluster).filter(Boolean))].sort(), [services]);
   const classificationOptions = ['Altíssima', 'Alta', 'Média', 'Baixa'];
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (Object.keys(modifiedServices).length > 0) {
+      if (!window.confirm('Você possui alterações não salvas. Mudar os filtros irá descartá-las. Deseja continuar?')) {
+        return;
+      }
+      setModifiedServices({});
+    }
     const { name, value } = e.target;
     setFilters(prev => ({...prev, [name]: value}));
     setCurrentPage(1); // Reset page on filter change
@@ -310,6 +288,32 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
     });
   };
 
+  const handleServiceChange = (service: Service) => {
+    setModifiedServices(prev => ({
+      ...prev,
+      [service.id]: service,
+    }));
+  };
+
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    const updates = Object.values(modifiedServices);
+    try {
+      await Promise.all(updates.map(service => updateService(service)));
+      setModifiedServices({});
+    } catch (error) {
+      console.error("Falha ao salvar alterações em massa", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    if (window.confirm('Tem certeza que deseja descartar todas as alterações não salvas? Esta ação não pode ser desfeita.')) {
+        setModifiedServices({});
+    }
+  };
+
   const processedData = useMemo(() => {
     let filteredServices = services
       .map(service => ({
@@ -317,7 +321,6 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
         total: service.scores.reduce((acc, val) => acc + (val || 0), 0),
       }));
       
-    // Apply filters
     if (filters.cluster !== 'all') {
       filteredServices = filteredServices.filter(s => s.cluster === filters.cluster);
     }
@@ -328,7 +331,6 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
       filteredServices = filteredServices.filter(s => getClassification(s.total).text === filters.classification);
     }
       
-    // Apply sorting
     if (sortConfig) {
       filteredServices.sort((a, b) => {
         let aValue: any;
@@ -356,14 +358,31 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
     return filteredServices;
   }, [services, filters, sortConfig]);
   
-  const totalPages = useMemo(() => Math.ceil(processedData.length / itemsPerPage), [processedData]);
+  const totalPages = useMemo(() => Math.ceil(processedData.length / itemsPerPage), [processedData, itemsPerPage]);
 
   const paginatedData = useMemo(() => {
     return processedData.slice(
       (currentPage - 1) * itemsPerPage,
       currentPage * itemsPerPage
     );
-  }, [processedData, currentPage]);
+  }, [processedData, currentPage, itemsPerPage]);
+
+  const paginatedDataWithModifications = useMemo(() => {
+    // FIX: When retrieving a modified service, it was missing the calculated 'total' property, causing type errors.
+    // This fix recalculates the 'total' for any modified service, ensuring data consistency.
+    return paginatedData.map(service => {
+      const modifiedService = modifiedServices[service.id];
+      if (modifiedService) {
+        return {
+          ...modifiedService,
+          total: modifiedService.scores.reduce((acc, val) => acc + (val || 0), 0),
+        };
+      }
+      return service;
+    });
+  }, [paginatedData, modifiedServices]);
+
+  const modifiedServiceIds = useMemo(() => Object.keys(modifiedServices).map(Number), [modifiedServices]);
   
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
@@ -382,12 +401,13 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
     >
       <div className="bg-white p-6 rounded-xl shadow-lg">
         <div className="flex flex-wrap justify-center items-center gap-4 mb-6">
-          <button onClick={refreshData} disabled={isLoading} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50">
+          <button onClick={refreshData} disabled={isLoading || isSaving} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50">
             Sincronizar Dados
           </button>
            <button 
             onClick={() => setShowChart(!showChart)} 
-            className="bg-brand-mid text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-all flex items-center gap-2"
+            disabled={isSaving}
+            className="bg-brand-mid text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
@@ -395,7 +415,7 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
             </svg>
             {showChart ? 'Ocultar Gráfico' : 'Visualizar Gráfico'}
           </button>
-          <button onClick={downloadCSV} disabled={services.length === 0} className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50">
+          <button onClick={downloadCSV} disabled={services.length === 0 || isSaving} className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             Baixar Planilha Completa
           </button>
@@ -404,21 +424,21 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 mb-6 border-y bg-gray-50/50 rounded-lg">
             <div>
                 <label htmlFor="cluster-filter" className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Cluster</label>
-                <select id="cluster-filter" name="cluster" value={filters.cluster} onChange={handleFilterChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white">
+                <select id="cluster-filter" name="cluster" value={filters.cluster} onChange={handleFilterChange} disabled={isSaving} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white disabled:opacity-50">
                     <option value="all">Todos os Clusters</option>
                     {uniqueClusters.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </div>
             <div>
                 <label htmlFor="classification-filter" className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Classificação</label>
-                <select id="classification-filter" name="classification" value={filters.classification} onChange={handleFilterChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white">
+                <select id="classification-filter" name="classification" value={filters.classification} onChange={handleFilterChange} disabled={isSaving} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white disabled:opacity-50">
                     <option value="all">Todas as Classificações</option>
                     {classificationOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </div>
             <div>
                 <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Status</label>
-                <select id="status-filter" name="status" value={filters.status} onChange={handleFilterChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white">
+                <select id="status-filter" name="status" value={filters.status} onChange={handleFilterChange} disabled={isSaving} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-mid focus:ring-brand-mid sm:text-sm bg-white disabled:opacity-50">
                     <option value="all">Todos os Status</option>
                     {statusOptions.map(s => <option key={s} value={s}>{statusDisplayMap[s]}</option>)}
                 </select>
@@ -434,11 +454,12 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
         {!isLoading && processedData.length > 0 && (
           <>
             <RankingTable 
-              data={paginatedData} 
-              onUpdateService={updateService}
+              data={paginatedDataWithModifications} 
+              onServiceChange={handleServiceChange}
               sortConfig={sortConfig}
               onSort={handleSort}
               pageStartIndex={(currentPage - 1) * itemsPerPage}
+              modifiedServiceIds={modifiedServiceIds}
             />
             <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
           </>
@@ -446,6 +467,29 @@ const PrioritizationSection = forwardRef<HTMLElement, PrioritizationSectionProps
 
         {!isLoading && processedData.length === 0 && (
              <p className="text-center text-gray-500 py-8">Nenhuma ideia encontrada para os filtros selecionados.</p>
+        )}
+        
+        {Object.keys(modifiedServices).length > 0 && (
+          <div className="sticky bottom-6 mt-6 z-20 w-full flex justify-center animate-fade-in pointer-events-none">
+            <div className="bg-brand-dark text-white p-4 rounded-xl shadow-2xl flex items-center gap-4 pointer-events-auto">
+                <span className="font-semibold text-lg">{Object.keys(modifiedServices).length}</span>
+                <span className="text-base">{Object.keys(modifiedServices).length === 1 ? 'alteração não salva' : 'alterações não salvas'}</span>
+                <button
+                    onClick={handleDiscardChanges}
+                    disabled={isSaving}
+                    className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                >
+                    Descartar
+                </button>
+                <button
+                    onClick={handleSaveChanges}
+                    disabled={isSaving}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                    {isSaving ? 'Salvando...' : 'Confirmar'}
+                </button>
+            </div>
+          </div>
         )}
       </div>
     </Section>

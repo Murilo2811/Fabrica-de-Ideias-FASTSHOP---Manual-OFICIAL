@@ -10,6 +10,7 @@ import { useServices } from '../contexts/ServicesContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import Pagination from './Pagination';
 import { criteriaData } from '../data/criteriaData';
+import AutomationModal from './AutomationModal';
 
 
 interface ServiceExplorerSectionProps {}
@@ -48,7 +49,8 @@ const ServiceCard: React.FC<{
   onDelete: (id: number) => Promise<void>;
   onEdit: (service: Service) => void;
   onView: (service: Service) => void;
-}> = ({ service, onDelete, onEdit, onView }) => {
+  onAutomate: (service: Service) => void;
+}> = ({ service, onDelete, onEdit, onView, onAutomate }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async (e: React.MouseEvent) => {
@@ -67,6 +69,11 @@ const ServiceCard: React.FC<{
     e.stopPropagation();
     onEdit(service);
   };
+  
+  const handleAutomate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onAutomate(service);
+  };
 
   return (
     <div
@@ -74,6 +81,11 @@ const ServiceCard: React.FC<{
       className={`bg-gray-50 p-4 rounded-lg shadow-md flex flex-col justify-between relative transform hover:-translate-y-1 transition-transform duration-200 cursor-pointer ${isDeleting ? 'opacity-50' : ''}`}
     >
       <div className="absolute top-2 right-2 flex gap-1">
+        <button onClick={handleAutomate} disabled={isDeleting} className="p-1 rounded-full text-gray-400 hover:bg-purple-100 hover:text-purple-600 transition-colors disabled:opacity-50" title="Acionar Automação">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </button>
         <button onClick={handleEdit} disabled={isDeleting} className="p-1 rounded-full text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition-colors disabled:opacity-50" title="Editar Ideia">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>
         </button>
@@ -307,6 +319,7 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
   });
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [viewingService, setViewingService] = useState<Service | null>(null);
+  const [automatingService, setAutomatingService] = useState<Service | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
@@ -380,9 +393,12 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
     setViewingService(service);
   };
 
+  const handleAutomateClick = (service: Service) => {
+    setAutomatingService(service);
+  };
+
   const handleCloseModal = () => {
     setEditingService(null);
-    setViewingService(null);
   };
 
   return (
@@ -449,7 +465,7 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {paginatedServices.length > 0 ? (
-            paginatedServices.map(service => <ServiceCard key={service.id} service={service} onDelete={deleteService} onEdit={handleEditClick} onView={handleViewClick} />)
+            paginatedServices.map(service => <ServiceCard key={service.id} service={service} onDelete={deleteService} onEdit={handleEditClick} onView={handleViewClick} onAutomate={handleAutomateClick} />)
           ) : (
             <p className="text-center text-gray-500 col-span-full py-8">Nenhum serviço encontrado para os filtros selecionados.</p>
           )}
@@ -473,6 +489,13 @@ const ServiceExplorerSection = forwardRef<HTMLElement, ServiceExplorerSectionPro
           isOpen={!!viewingService}
           onClose={() => setViewingService(null)}
           service={viewingService}
+        />
+      )}
+       {automatingService && (
+        <AutomationModal 
+          isOpen={!!automatingService}
+          onClose={() => setAutomatingService(null)}
+          service={automatingService}
         />
       )}
     </Section>

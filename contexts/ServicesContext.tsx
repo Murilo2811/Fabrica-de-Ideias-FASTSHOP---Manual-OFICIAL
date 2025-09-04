@@ -1,7 +1,8 @@
 
 import React, { createContext, useState, useCallback, useEffect, useContext, ReactNode } from 'react';
 import type { Service, ParsedError } from '../types';
-import { getServices, addServiceToSheet, updateServiceInSheet, deleteServiceFromSheet, bulkUpdateServicesInSheet } from '../services/googleSheetService';
+import { getServices, addServiceToSheet, updateServiceInSheet, deleteServiceFromSheet } from '../services/googleSheetService';
+import { sendToWebhook } from '../services/webhookService';
 import { criteriaData } from '../data/criteriaData';
 import { mapBusinessModel } from '../utils/businessModelMapper';
 import { parseApiError } from '../utils/errorHandler';
@@ -28,6 +29,7 @@ interface ServicesContextType {
   deleteService: (idToDelete: number) => Promise<void>;
   downloadCSV: () => void;
   refreshData: () => void;
+  triggerAutomation: (service: Service, message: string) => Promise<void>;
 }
 
 const ServicesContext = createContext<ServicesContextType | undefined>(undefined);
@@ -140,7 +142,7 @@ export const ServicesProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
 
     const csvRows = services.map(service => {
-        const total = service.scores.reduce((acc, val) => acc + val, 0);
+        const total = service.scores.reduce((acc, val) => acc + (val || 0), 0);
         const rowData = [
             service.id,
             service.service,
@@ -172,6 +174,36 @@ export const ServicesProvider: React.FC<{ children: ReactNode }> = ({ children }
     showNotification('Download da planilha iniciado.', 'success');
   }, [services]);
 
+  const triggerAutomation = useCallback(async (service: Service, message: string) => {
+    try {
+      const payload = {
+        idea: {
+          id: service.id,
+          name: service.service,
+          description: service.need,
+          cluster: service.cluster,
+          businessModel: service.businessModel,
+          targetAudience: service.targetAudience,
+          status: service.status,
+          creator: service.creatorName,
+          creationDate: service.creationDate,
+          scores: service.scores,
+          totalScore: service.scores.reduce((a, b) => a + (b || 0), 0),
+          revenueEstimate: service.revenueEstimate,
+        },
+        message: message,
+        triggeredBy: 'FabricaDeIdeiasApp',
+        timestamp: new Date().toISOString(),
+      };
+      await sendToWebhook(payload);
+      showNotification('Ideia enviada para o fluxo de automação!', 'success');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      showNotification(`Falha ao acionar automação: ${errorMessage}`, 'error');
+      throw error;
+    }
+  }, []);
+
   const value = {
     services,
     isLoading: isLoading && !isRefreshing,
@@ -183,7 +215,8 @@ export const ServicesProvider: React.FC<{ children: ReactNode }> = ({ children }
     updateService,
     deleteService,
     downloadCSV,
-    refreshData
+    refreshData,
+    triggerAutomation,
   };
 
   return <ServicesContext.Provider value={value}>{children}</ServicesContext.Provider>;

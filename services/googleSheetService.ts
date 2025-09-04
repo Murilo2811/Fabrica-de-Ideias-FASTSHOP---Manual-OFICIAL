@@ -26,7 +26,7 @@ const mockPasswords: { [email: string]: string } = {
 let nextUserId = 2;
 
 let mockServices: Service[] = [
-    { id: 1, service: "Consultoria de Casa Inteligente", need: "Ajuda para escolher e instalar dispositivos de casa inteligente compatíveis.", cluster: "Casa Inteligente", businessModel: "Consultoria", targetAudience: "Proprietários de casas", status: "aprovada", creatorName: "Ana", creationDate: "2023-10-01T10:00:00Z", scores: [5, 4, 3, 5, 4], revenueEstimate: 150000 },
+    { id: 1, service: "Consultoria de Casa Inteligente", need: "Ajuda para escolher e instalar dispositivos de casa inteligente compatíveis.", cluster: "Casa Inteligente", businessModel: "Consultoria", targetAudience: "Proprietários de casas", status: "aprovada", creatorName: "Ana", creationDate: "203-10-01T10:00:00Z", scores: [5, 4, 3, 5, 4], revenueEstimate: 150000 },
     { id: 2, service: "Plano de Suporte Técnico Premium", need: "Suporte técnico 24/7 para todos os eletrônicos da casa.", cluster: "Suporte Técnico", businessModel: "Assinatura/Recorrência", targetAudience: "Famílias com muitos dispositivos", status: "avaliação", creatorName: "Bruno", creationDate: "2023-10-02T11:30:00Z", scores: [4, 5, 5, 4, 3], revenueEstimate: 500000 },
     { id: 3, service: "Aluguel de Equipamentos de Realidade Virtual", need: "Acesso a equipamentos de VR de ponta para eventos ou uso casual.", cluster: "Acesso Flexível", businessModel: "Locação", targetAudience: "Gamers e planejadores de eventos", status: "avaliação", creatorName: "Carlos", creationDate: "2023-10-03T14:00:00Z", scores: [3, 4, 3, 4, 4], revenueEstimate: 80000 },
 ];
@@ -50,14 +50,6 @@ async function handleMockRequest(action: string, payload?: any): Promise<any> {
                         const index = mockServices.findIndex(s => s.id === payload.service.id);
                         if (index > -1) { mockServices[index] = { ...mockServices[index], ...payload.service }; resolve({ success: true, data: mockServices[index] }); } 
                         else { throw new Error(`Serviço com id ${payload.service.id} não encontrado.`); }
-                        break;
-                    }
-                    case 'bulkUpdateServices': {
-                         payload.services.forEach((serviceData: Service) => {
-                            const index = mockServices.findIndex(s => s.id === serviceData.id);
-                            if (index > -1) mockServices[index] = { ...mockServices[index], ...serviceData };
-                        });
-                        resolve({ success: true, data: { updatedCount: payload.services.length } });
                         break;
                     }
                     case 'deleteService': {
@@ -158,7 +150,6 @@ const serviceToSheetData = (service: Partial<Service>) => ({
 export const getServices = (): Promise<Service[]> => apiRequest<Service[]>('getServices');
 export const addServiceToSheet = (service: Omit<Service, 'id' | 'creationDate' | 'scores' | 'revenueEstimate'>): Promise<Service> => apiRequest<Service>('addService', { service });
 export const updateServiceInSheet = (service: Service): Promise<Service> => apiRequest<Service>('updateService', { service: serviceToSheetData(service) });
-export const bulkUpdateServicesInSheet = (services: Service[]): Promise<{ updatedCount: number }> => apiRequest<{ updatedCount: number }>('bulkUpdateServices', { services: services.map(serviceToSheetData) });
 export const deleteServiceFromSheet = (id: number): Promise<{ id: number }> => apiRequest<{ id: number }>('deleteService', { id });
 
 // FIX: Export loginUser and registerUser functions to resolve import errors in AuthContext.
